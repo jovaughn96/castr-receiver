@@ -3,8 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Castr Receiver - Cast & WebRTC</title>
-    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <title>Castr WebRTC Receiver</title>
     <style>
         * {
             margin: 0;
@@ -18,26 +17,13 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
         }
 
-        /* Cast media player */
-        cast-media-player {
-            width: 100%;
-            height: 100%;
-            --splash-image: none;
-            --progress-color: rgba(66, 133, 244, 0.9);
-        }
-
-        /* WebRTC video container */
-        #webrtc-container {
-            display: none;
+        #video-container {
             width: 100vw;
             height: 100vh;
-            background-color: #000;
-        }
-
-        #webrtc-container.active {
             display: flex;
             align-items: center;
             justify-content: center;
+            background-color: #000;
         }
 
         #remote-video {
@@ -48,7 +34,6 @@
             object-fit: contain;
         }
 
-        /* Status indicator */
         #status {
             position: absolute;
             top: 20px;
@@ -101,39 +86,29 @@
             border-radius: 8px;
             backdrop-filter: blur(10px);
             font-family: 'Courier New', monospace;
-            display: none;
-        }
-
-        #session-info.active {
-            display: block;
         }
     </style>
 </head>
 <body>
-    <!-- Cast Framework Media Player -->
-    <cast-media-player></cast-media-player>
-
-    <!-- WebRTC Video Container -->
-    <div id="webrtc-container">
+    <div id="video-container">
         <video id="remote-video" autoplay playsinline></video>
     </div>
 
-    <!-- Status Overlay -->
     <div id="status">
         <span class="status-indicator" id="status-indicator"></span>
-        <span id="status-text">Castr Receiver</span>
+        <span id="status-text">Initializing...</span>
     </div>
 
-    <!-- Session Info (only shown in WebRTC mode) -->
     <div id="session-info">
-        Mode: <span id="mode-text">Cast</span> | Session: <span id="session-id">-</span>
+        Session ID: <span id="session-id">-</span>
     </div>
 
     <script>
-        // ============================================
         // Configuration
-        // ============================================
-        const SIGNALING_SERVER = 'wss://castr-production.up.railway.app'; // Your Railway signaling server
+        const SIGNALING_SERVER = 'ws://192.168.2.196:3000'; // Update with your server IP
+        const RECEIVER_NAME = 'Castr Screen Mirror';
+
+        // WebRTC Configuration
         const ICE_SERVERS = {
             iceServers: [
                 { urls: 'stun:stun.l.google.com:19302' },
@@ -141,156 +116,27 @@
             ]
         };
 
-        // ============================================
         // DOM Elements
-        // ============================================
-        const webrtcContainer = document.getElementById('webrtc-container');
         const remoteVideo = document.getElementById('remote-video');
         const statusText = document.getElementById('status-text');
         const statusIndicator = document.getElementById('status-indicator');
-        const sessionInfo = document.getElementById('session-info');
         const sessionIdDisplay = document.getElementById('session-id');
-        const modeText = document.getElementById('mode-text');
 
-        // ============================================
-        // State
-        // ============================================
-        let currentMode = 'cast'; // 'cast' or 'webrtc'
+        // WebRTC and WebSocket
         let ws = null;
         let peerConnection = null;
         let sessionId = null;
 
-        // ============================================
-        // Cast Framework Setup
-        // ============================================
-        const context = cast.framework.CastReceiverContext.getInstance();
-        const playerManager = context.getPlayerManager();
+        // Initialize
+        init();
 
-        // Cast Framework Event Listeners
-        playerManager.addEventListener(
-            cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
-            () => {
-                if (currentMode === 'cast') {
-                    updateStatus('Cast - Connected', 'connected');
-                    console.log('Cast media loaded successfully');
-                }
-            }
-        );
-
-        playerManager.addEventListener(
-            cast.framework.events.EventType.PLAYING,
-            () => {
-                if (currentMode === 'cast') {
-                    updateStatus('Cast - Playing', 'connected');
-                    console.log('Cast playback started');
-                }
-            }
-        );
-
-        playerManager.addEventListener(
-            cast.framework.events.EventType.PAUSE,
-            () => {
-                if (currentMode === 'cast') {
-                    updateStatus('Cast - Paused', 'waiting');
-                    console.log('Cast playback paused');
-                }
-            }
-        );
-
-        playerManager.addEventListener(
-            cast.framework.events.EventType.ERROR,
-            (event) => {
-                updateStatus('Cast - Error', 'waiting');
-                console.error('Cast playback error:', event.detailedErrorCode, event.error);
-            }
-        );
-
-        playerManager.addEventListener(
-            cast.framework.events.EventType.BUFFERING,
-            () => {
-                if (currentMode === 'cast') {
-                    updateStatus('Cast - Buffering...', 'waiting');
-                    console.log('Cast buffering');
-                }
-            }
-        );
-
-        // Intercept LOAD requests to detect WebRTC mode
-        playerManager.setMessageInterceptor(
-            cast.framework.messages.MessageType.LOAD,
-            (loadRequestData) => {
-                console.log('Load request:', loadRequestData);
-
-                // Check if this is a WebRTC request
-                if (loadRequestData.media && loadRequestData.media.customData) {
-                    const customData = loadRequestData.media.customData;
-
-                    // If sessionId is present, switch to WebRTC mode
-                    if (customData.sessionId) {
-                        console.log('WebRTC mode detected, session ID:', customData.sessionId);
-                        switchToWebRTCMode(customData.sessionId, customData.signalingServer);
-                        return null; // Cancel Cast playback
-                    }
-                }
-
-                // Default Cast Framework handling
-                if (loadRequestData.media && loadRequestData.media.contentUrl) {
-                    const url = loadRequestData.media.contentUrl;
-                    console.log('Loading Cast media from:', url);
-
-                    // Set content type for MP4
-                    if (!loadRequestData.media.contentType) {
-                        loadRequestData.media.contentType = 'video/mp4';
-                    }
-
-                    // Enable autoplay
-                    loadRequestData.autoplay = true;
-                }
-
-                return loadRequestData;
-            }
-        );
-
-        // Start Cast Framework
-        const options = new cast.framework.CastReceiverOptions();
-        options.disableIdleTimeout = true;
-        options.maxInactivity = 3600;
-        context.start(options);
-
-        console.log('Cast Framework initialized');
-
-        // Check URL for WebRTC session ID (for direct browser testing)
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlSessionId = urlParams.get('sessionId');
-        if (urlSessionId) {
-            console.log('WebRTC session ID found in URL:', urlSessionId);
-            switchToWebRTCMode(urlSessionId);
+        function init() {
+            updateStatus('Connecting to signaling server...', 'waiting');
+            connectToSignalingServer();
         }
 
-        // ============================================
-        // WebRTC Mode
-        // ============================================
-        function switchToWebRTCMode(sessionIdParam, signalingServerUrl = null) {
-            currentMode = 'webrtc';
-            sessionId = sessionIdParam;
-
-            // Update UI
-            webrtcContainer.classList.add('active');
-            sessionInfo.classList.add('active');
-            sessionIdDisplay.textContent = sessionId;
-            modeText.textContent = 'WebRTC';
-
-            // Connect to signaling server
-            const serverUrl = signalingServerUrl || SIGNALING_SERVER;
-            connectToSignalingServer(serverUrl);
-
-            console.log('Switched to WebRTC mode');
-        }
-
-        function connectToSignalingServer(serverUrl) {
-            updateStatus('WebRTC - Connecting...', 'waiting');
-
-            ws = new WebSocket(serverUrl);
+        function connectToSignalingServer() {
+            ws = new WebSocket(SIGNALING_SERVER);
 
             ws.onopen = () => {
                 console.log('Connected to signaling server');
@@ -309,34 +155,36 @@
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
-                updateStatus('WebRTC - Connection Error', 'waiting');
+                updateStatus('Connection error', 'waiting');
             };
 
             ws.onclose = () => {
                 console.log('Disconnected from signaling server');
-                updateStatus('WebRTC - Disconnected', 'waiting');
+                updateStatus('Disconnected - Reconnecting...', 'waiting');
                 // Attempt to reconnect after 3 seconds
                 setTimeout(() => {
-                    if (currentMode === 'webrtc') {
-                        connectToSignalingServer(serverUrl);
-                    }
+                    connectToSignalingServer();
                 }, 3000);
             };
         }
 
         function registerAsReceiver() {
+            // Generate or retrieve session ID
+            sessionId = getSessionIdFromURL() || generateSessionId();
+            sessionIdDisplay.textContent = sessionId;
+
             ws.send(JSON.stringify({
                 type: 'register-receiver',
                 sessionId: sessionId,
-                name: 'Castr WebRTC Receiver'
+                name: RECEIVER_NAME
             }));
         }
 
         async function handleSignalingMessage(message) {
             switch (message.type) {
                 case 'registered':
-                    console.log('Registered as WebRTC receiver:', message.sessionId);
-                    updateStatus('WebRTC - Waiting for sender...', 'waiting');
+                    console.log('Registered as receiver:', message.sessionId);
+                    updateStatus('Waiting for sender...', 'waiting');
                     break;
 
                 case 'offer':
@@ -352,40 +200,44 @@
 
                 case 'peer-disconnected':
                     console.log('Sender disconnected');
-                    updateStatus('WebRTC - Sender Disconnected', 'waiting');
+                    updateStatus('Sender disconnected', 'waiting');
                     closePeerConnection();
                     break;
 
                 case 'error':
                     console.error('Signaling error:', message.message);
-                    updateStatus(`WebRTC - Error: ${message.message}`, 'waiting');
+                    updateStatus(`Error: ${message.message}`, 'waiting');
                     break;
             }
         }
 
         async function handleOffer(sdp) {
             try {
+                // Create peer connection if it doesn't exist
                 if (!peerConnection) {
                     createPeerConnection();
                 }
 
+                // Set remote description
                 await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
                 console.log('Set remote description (offer)');
 
+                // Create answer
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
                 console.log('Created and set local description (answer)');
 
+                // Send answer to sender
                 ws.send(JSON.stringify({
                     type: 'answer',
                     sdp: peerConnection.localDescription
                 }));
 
                 console.log('Sent answer to sender');
-                updateStatus('WebRTC - Connecting...', 'waiting');
+                updateStatus('Connecting to sender...', 'waiting');
             } catch (error) {
                 console.error('Error handling offer:', error);
-                updateStatus('WebRTC - Connection Failed', 'waiting');
+                updateStatus('Connection failed', 'waiting');
             }
         }
 
@@ -404,6 +256,7 @@
             console.log('Creating peer connection...');
             peerConnection = new RTCPeerConnection(ICE_SERVERS);
 
+            // Handle ICE candidates
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     ws.send(JSON.stringify({
@@ -414,33 +267,36 @@
                 }
             };
 
+            // Handle connection state changes
             peerConnection.onconnectionstatechange = () => {
                 console.log('Connection state:', peerConnection.connectionState);
                 switch (peerConnection.connectionState) {
                     case 'connected':
-                        updateStatus('WebRTC - Connected', 'connected');
+                        updateStatus('Screen Mirror - Connected', 'connected');
                         break;
                     case 'disconnected':
-                        updateStatus('WebRTC - Disconnected', 'waiting');
+                        updateStatus('Disconnected', 'waiting');
                         break;
                     case 'failed':
-                        updateStatus('WebRTC - Connection Failed', 'waiting');
+                        updateStatus('Connection failed', 'waiting');
                         closePeerConnection();
                         break;
                     case 'closed':
-                        updateStatus('WebRTC - Closed', 'waiting');
+                        updateStatus('Connection closed', 'waiting');
                         break;
                 }
             };
 
+            // Handle incoming media tracks
             peerConnection.ontrack = (event) => {
                 console.log('Received remote track:', event.track.kind);
                 if (event.streams && event.streams[0]) {
                     remoteVideo.srcObject = event.streams[0];
-                    updateStatus('WebRTC - Streaming', 'connected');
+                    updateStatus('Screen Mirror - Playing', 'connected');
                 }
             };
 
+            // Handle ICE connection state
             peerConnection.oniceconnectionstatechange = () => {
                 console.log('ICE connection state:', peerConnection.iceConnectionState);
             };
@@ -454,15 +310,21 @@
             }
         }
 
-        // ============================================
-        // Utility Functions
-        // ============================================
         function updateStatus(text, state) {
             statusText.textContent = text;
             statusIndicator.className = 'status-indicator';
             if (state) {
                 statusIndicator.classList.add(state);
             }
+        }
+
+        function getSessionIdFromURL() {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('sessionId');
+        }
+
+        function generateSessionId() {
+            return 'castr-' + Math.random().toString(36).substring(2, 15);
         }
 
         // Cleanup on page unload
@@ -473,9 +335,6 @@
             }
             closePeerConnection();
         });
-
-        console.log('Castr Hybrid Receiver initialized');
-        console.log('Supports: Cast Framework & WebRTC');
     </script>
 </body>
 </html>
