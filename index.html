@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Castr Screen Mirror Receiver</title>
+    <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #000;
+            overflow: hidden;
+        }
+        cast-media-player {
+            width: 100%;
+            height: 100%;
+            --splash-image: none;
+            --progress-color: rgba(66, 133, 244, 0.9);
+        }
+        #status {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            font-family: 'Roboto', sans-serif;
+            font-size: 18px;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 8px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <cast-media-player></cast-media-player>
+    <div id="status">Castr Screen Mirror</div>
+
+    <script>
+        const context = cast.framework.CastReceiverContext.getInstance();
+        const playerManager = context.getPlayerManager();
+        const statusEl = document.getElementById('status');
+
+        // Configure player to support fragmented MP4 streaming
+        const playbackConfig = new cast.framework.PlaybackConfig();
+
+        // Enable Media Source Extensions for fragmented MP4
+        playbackConfig.manifestHandler = null; // Use default handler
+        playbackConfig.segmentHandler = null; // Use default handler
+
+        context.setPlaybackConfig(playbackConfig);
+
+        // Log all media events for debugging
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
+            () => {
+                statusEl.textContent = 'Screen Mirror - Connected';
+                console.log('Media loaded successfully');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PLAYING,
+            () => {
+                statusEl.textContent = 'Screen Mirror - Playing';
+                console.log('Playback started');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.PAUSE,
+            () => {
+                statusEl.textContent = 'Screen Mirror - Paused';
+                console.log('Playback paused');
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.ERROR,
+            (event) => {
+                statusEl.textContent = 'Screen Mirror - Error';
+                console.error('Playback error:', event.detailedErrorCode, event.error);
+            }
+        );
+
+        playerManager.addEventListener(
+            cast.framework.events.EventType.BUFFERING,
+            () => {
+                statusEl.textContent = 'Screen Mirror - Buffering...';
+                console.log('Buffering');
+            }
+        );
+
+        // Intercept LOAD requests to configure fragmented MP4 handling
+        playerManager.setMessageInterceptor(
+            cast.framework.messages.MessageType.LOAD,
+            (loadRequestData) => {
+                console.log('Load request:', loadRequestData);
+
+                // Ensure we accept fragmented MP4
+                if (loadRequestData.media && loadRequestData.media.contentUrl) {
+                    const url = loadRequestData.media.contentUrl;
+                    console.log('Loading media from:', url);
+
+                    // Set content type explicitly for MP4
+                    if (!loadRequestData.media.contentType) {
+                        loadRequestData.media.contentType = 'video/mp4';
+                    }
+
+                    // Enable autoplay for live streaming
+                    loadRequestData.autoplay = true;
+                }
+
+                return loadRequestData;
+            }
+        );
+
+        // Custom options for the receiver
+        const options = new cast.framework.CastReceiverOptions();
+
+        // Disable idle timeout for screen mirroring (keep connection alive)
+        options.disableIdleTimeout = true;
+
+        // Set max idle time to 1 hour
+        options.maxInactivity = 3600;
+
+        // Enable detailed logging in development
+        options.playbackConfig = playbackConfig;
+
+        // Start the receiver
+        context.start(options);
+
+        console.log('Castr Screen Mirror Receiver initialized');
+        console.log('Ready to receive fragmented MP4 streams');
+    </script>
+</body>
+</html>
