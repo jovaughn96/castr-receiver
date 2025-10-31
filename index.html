@@ -107,6 +107,45 @@
         #session-info.active {
             display: block;
         }
+
+        /* Debug Console Overlay */
+        #debug-console {
+            position: absolute;
+            top: 80px;
+            left: 20px;
+            right: 20px;
+            max-height: 400px;
+            background: rgba(0, 0, 0, 0.9);
+            color: #00ff00;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            padding: 10px;
+            border-radius: 8px;
+            overflow-y: auto;
+            z-index: 9999;
+            display: none;
+        }
+
+        #debug-console.active {
+            display: block;
+        }
+
+        #debug-console .log-entry {
+            margin: 2px 0;
+            word-wrap: break-word;
+        }
+
+        #debug-console .log-entry.error {
+            color: #ff0000;
+        }
+
+        #debug-console .log-entry.success {
+            color: #00ff00;
+        }
+
+        #debug-console .log-entry.info {
+            color: #00ccff;
+        }
     </style>
 </head>
 <body>
@@ -128,6 +167,9 @@
     <div id="session-info">
         Mode: <span id="mode-text">Cast</span> | Session: <span id="session-id">-</span>
     </div>
+
+    <!-- Debug Console Overlay -->
+    <div id="debug-console" class="active"></div>
 
     <script>
         // ============================================
@@ -151,6 +193,53 @@
         const sessionInfo = document.getElementById('session-info');
         const sessionIdDisplay = document.getElementById('session-id');
         const modeText = document.getElementById('mode-text');
+        const debugConsole = document.getElementById('debug-console');
+
+        // ============================================
+        // Debug Console
+        // ============================================
+        const MAX_DEBUG_LINES = 50;
+        const debugLines = [];
+
+        function addDebugLog(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logEntry = `[${timestamp}] ${message}`;
+
+            debugLines.push({ text: logEntry, type });
+
+            // Keep only last MAX_DEBUG_LINES
+            while (debugLines.length > MAX_DEBUG_LINES) {
+                debugLines.shift();
+            }
+
+            // Update display
+            debugConsole.innerHTML = debugLines
+                .map(line => `<div class="log-entry ${line.type}">${line.text}</div>`)
+                .join('');
+
+            // Auto-scroll to bottom
+            debugConsole.scrollTop = debugConsole.scrollHeight;
+        }
+
+        // Override console methods to also show on screen
+        const originalLog = console.log;
+        const originalError = console.error;
+        const originalWarn = console.warn;
+
+        console.log = function(...args) {
+            originalLog.apply(console, args);
+            addDebugLog(args.join(' '), 'info');
+        };
+
+        console.error = function(...args) {
+            originalError.apply(console, args);
+            addDebugLog('ERROR: ' + args.join(' '), 'error');
+        };
+
+        console.warn = function(...args) {
+            originalWarn.apply(console, args);
+            addDebugLog('WARN: ' + args.join(' '), 'info');
+        };
 
         // ============================================
         // State
@@ -378,6 +467,20 @@
                 }));
                 console.log('Set remote description (offer)');
 
+                // Check transceivers after setting remote description
+                const transceivers = peerConnection.getTransceivers();
+                console.log('Transceivers count:', transceivers.length);
+                transceivers.forEach((transceiver, index) => {
+                    console.log(`Transceiver ${index}:`, {
+                        mid: transceiver.mid,
+                        direction: transceiver.direction,
+                        currentDirection: transceiver.currentDirection,
+                        sender: transceiver.sender?.track?.kind,
+                        receiver: transceiver.receiver?.track?.kind,
+                        receiverTrackId: transceiver.receiver?.track?.id
+                    });
+                });
+
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
                 console.log('Created and set local description (answer)');
@@ -410,6 +513,9 @@
             console.log('Creating peer connection...');
             peerConnection = new RTCPeerConnection(ICE_SERVERS);
 
+            // Log all peer connection events for debugging
+            console.log('Setting up peer connection event handlers...');
+
             peerConnection.onicecandidate = (event) => {
                 if (event.candidate) {
                     ws.send(JSON.stringify({
@@ -440,28 +546,66 @@
             };
 
             peerConnection.ontrack = (event) => {
-                console.log('Received remote track:', event.track.kind);
+                console.log('🎯 ontrack EVENT FIRED!');
+                console.log('Track kind:', event.track.kind);
+                console.log('Track id:', event.track.id);
+                console.log('Track label:', event.track.label);
                 console.log('Track readyState:', event.track.readyState);
+                console.log('Track enabled:', event.track.enabled);
                 console.log('Event streams:', event.streams);
+                console.log('Event streams length:', event.streams ? event.streams.length : 0);
+                console.log('Event transceiver:', event.transceiver);
 
                 if (event.streams && event.streams[0]) {
-                    console.log('Setting srcObject with stream');
+                    console.log('Using stream from event.streams[0]');
+                    console.log('Stream id:', event.streams[0].id);
+                    console.log('Stream active:', event.streams[0].active);
+                    console.log('Stream tracks:', event.streams[0].getTracks());
                     remoteVideo.srcObject = event.streams[0];
                 } else {
                     // Create a new MediaStream if streams array is empty
                     console.log('Creating new MediaStream from track');
                     const stream = new MediaStream([event.track]);
+                    console.log('Created stream id:', stream.id);
+                    console.log('Created stream active:', stream.active);
                     remoteVideo.srcObject = stream;
                 }
 
+                console.log('Video element srcObject set:', remoteVideo.srcObject);
+
+                // Monitor track state changes
+                event.track.onended = () => {
+                    console.log('Track ended');
+                };
+                event.track.onmute = () => {
+                    console.log('Track muted');
+                };
+                event.track.onunmute = () => {
+                    console.log('Track unmuted');
+                };
+
                 // Explicitly play the video
+                console.log('Attempting to play video...');
                 remoteVideo.play().then(() => {
-                    console.log('Video playing successfully');
+                    console.log('✅ Video playing successfully');
+                    console.log('Video paused:', remoteVideo.paused);
+                    console.log('Video readyState:', remoteVideo.readyState);
+                    console.log('Video networkState:', remoteVideo.networkState);
                     updateStatus('WebRTC - Streaming', 'connected');
                 }).catch((error) => {
-                    console.error('Error playing video:', error);
+                    console.error('❌ Error playing video:', error);
                     updateStatus('WebRTC - Play Error', 'waiting');
                 });
+            };
+
+            // Also monitor if transceivers are created
+            peerConnection.onnegotiationneeded = () => {
+                console.log('Negotiation needed');
+            };
+
+            // Log when signaling state changes
+            peerConnection.onsignalingstatechange = () => {
+                console.log('Signaling state:', peerConnection.signalingState);
             };
 
             peerConnection.oniceconnectionstatechange = () => {
