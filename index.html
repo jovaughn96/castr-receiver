@@ -479,11 +479,31 @@
                         receiver: transceiver.receiver?.track?.kind,
                         receiverTrackId: transceiver.receiver?.track?.id
                     });
+
+                    // Ensure receiver is configured to receive video
+                    // The sender uses sendonly, so receiver must use recvonly
+                    if (transceiver.receiver?.track?.kind === 'video') {
+                        console.log('Setting video transceiver direction to recvonly');
+                        transceiver.direction = 'recvonly';
+                    }
                 });
 
                 const answer = await peerConnection.createAnswer();
                 await peerConnection.setLocalDescription(answer);
                 console.log('Created and set local description (answer)');
+
+                // Log answer SDP to verify it includes video
+                console.log('Answer SDP:', answer.sdp);
+                if (answer.sdp.includes('m=video')) {
+                    console.log('✅ Video track is in answer SDP');
+                    if (answer.sdp.includes('a=recvonly')) {
+                        console.log('✅ Answer has recvonly direction');
+                    } else {
+                        console.log('⚠️ Answer does not have recvonly (might be inactive or sendrecv)');
+                    }
+                } else {
+                    console.log('❌ No video track in answer SDP!');
+                }
 
                 ws.send(JSON.stringify({
                     type: 'answer',
