@@ -267,6 +267,9 @@
             switchToWebRTCMode(urlSessionId);
         }
 
+        // Note: For standalone browser testing, add ?sessionId=your-session-id to the URL
+        // For Chromecast mode, the receiver will detect sessionId from Cast Framework customData
+
         // ============================================
         // WebRTC Mode
         // ============================================
