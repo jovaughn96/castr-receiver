@@ -229,8 +229,8 @@
     <!-- Debug Console Overlay -->
     <div id="debug-wrapper" class="active">
         <div id="debug-controls">
-            <button class="debug-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">Auto-Scroll: ON</button>
-            <button class="debug-btn" id="btn-export" onclick="exportLogs()">📋 Copy Logs</button>
+            <button class="debug-btn" id="btn-freeze" onclick="toggleFreeze()" style="font-size: 18px; padding: 12px 20px; font-weight: bold;">⏸️ FREEZE</button>
+            <button class="debug-btn" id="btn-autoscroll" onclick="toggleAutoScroll()">Auto-Scroll: OFF</button>
             <button class="debug-btn" id="btn-clear" onclick="clearLogs()">🗑️ Clear</button>
             <button class="debug-btn" id="btn-scroll-top" onclick="scrollToTop()">⬆️ Top</button>
             <button class="debug-btn" id="btn-scroll-bottom" onclick="scrollToBottom()">⬇️ Bottom</button>
@@ -265,14 +265,16 @@
         // ============================================
         // Debug Console
         // ============================================
-        const MAX_DEBUG_LINES = 200; // Increased from 50 to allow more history
+        const MAX_DEBUG_LINES = 500; // Increased to store more history
         const debugLines = [];
-        let autoScrollEnabled = true;
+        let autoScrollEnabled = false; // Default OFF for easier reading
+        let displayFrozen = false; // When true, stops updating the display
 
         function addDebugLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
             const logEntry = `[${timestamp}] ${message}`;
 
+            // Always store logs in memory
             debugLines.push({ text: logEntry, type });
 
             // Keep only last MAX_DEBUG_LINES
@@ -280,7 +282,13 @@
                 debugLines.shift();
             }
 
-            // Update display
+            // Only update display if not frozen
+            if (!displayFrozen) {
+                updateDebugDisplay();
+            }
+        }
+
+        function updateDebugDisplay() {
             debugConsole.innerHTML = debugLines
                 .map(line => `<div class="log-entry ${line.type}">${line.text}</div>`)
                 .join('');
@@ -292,6 +300,26 @@
         }
 
         // Debug Console Control Functions
+        function toggleFreeze() {
+            displayFrozen = !displayFrozen;
+            const btn = document.getElementById('btn-freeze');
+
+            if (displayFrozen) {
+                btn.textContent = '▶️ RESUME';
+                btn.style.background = '#770000';
+                btn.style.borderColor = '#ff0000';
+            } else {
+                btn.textContent = '⏸️ FREEZE';
+                btn.style.background = '#333';
+                btn.style.borderColor = '#555';
+                // Refresh display with any missed logs
+                updateDebugDisplay();
+                if (autoScrollEnabled) {
+                    scrollToBottom();
+                }
+            }
+        }
+
         function toggleAutoScroll() {
             autoScrollEnabled = !autoScrollEnabled;
             const btn = document.getElementById('btn-autoscroll');
