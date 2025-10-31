@@ -41,15 +41,6 @@
         const playerManager = context.getPlayerManager();
         const statusEl = document.getElementById('status');
 
-        // Configure player to support fragmented MP4 streaming
-        const playbackConfig = new cast.framework.PlaybackConfig();
-
-        // Enable Media Source Extensions for fragmented MP4
-        playbackConfig.manifestHandler = null; // Use default handler
-        playbackConfig.segmentHandler = null; // Use default handler
-
-        context.setPlaybackConfig(playbackConfig);
-
         // Log all media events for debugging
         playerManager.addEventListener(
             cast.framework.events.EventType.PLAYER_LOAD_COMPLETE,
@@ -123,9 +114,6 @@
 
         // Set max idle time to 1 hour
         options.maxInactivity = 3600;
-
-        // Enable detailed logging in development
-        options.playbackConfig = playbackConfig;
 
         // Start the receiver
         context.start(options);
