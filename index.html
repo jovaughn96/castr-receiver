@@ -108,26 +108,84 @@
             display: block;
         }
 
-        /* Debug Console Overlay */
-        #debug-console {
+        /* Debug Console Container */
+        #debug-wrapper {
             position: absolute;
             top: 80px;
             left: 20px;
             right: 20px;
-            max-height: 400px;
+            z-index: 9999;
+            display: none;
+        }
+
+        #debug-wrapper.active {
+            display: block;
+        }
+
+        /* Debug Control Buttons */
+        #debug-controls {
+            background: rgba(0, 0, 0, 0.95);
+            padding: 10px;
+            border-radius: 8px 8px 0 0;
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .debug-btn {
+            background: #333;
+            color: #fff;
+            border: 1px solid #555;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-family: 'Courier New', monospace;
+        }
+
+        .debug-btn:hover {
+            background: #444;
+        }
+
+        .debug-btn:active {
+            background: #222;
+        }
+
+        .debug-btn.active {
+            background: #007700;
+            border-color: #00ff00;
+        }
+
+        /* Debug Console Overlay */
+        #debug-console {
             background: rgba(0, 0, 0, 0.9);
             color: #00ff00;
             font-family: 'Courier New', monospace;
             font-size: 12px;
             padding: 10px;
-            border-radius: 8px;
-            overflow-y: auto;
-            z-index: 9999;
-            display: none;
+            border-radius: 0 0 8px 8px;
+            overflow-y: scroll;
+            max-height: 500px;
+            scrollbar-width: thin;
+            scrollbar-color: #00ff00 #000;
         }
 
-        #debug-console.active {
-            display: block;
+        /* Webkit scrollbar styling */
+        #debug-console::-webkit-scrollbar {
+            width: 12px;
+        }
+
+        #debug-console::-webkit-scrollbar-track {
+            background: #000;
+        }
+
+        #debug-console::-webkit-scrollbar-thumb {
+            background: #00ff00;
+            border-radius: 6px;
+        }
+
+        #debug-console::-webkit-scrollbar-thumb:hover {
+            background: #00cc00;
         }
 
         #debug-console .log-entry {
@@ -169,7 +227,16 @@
     </div>
 
     <!-- Debug Console Overlay -->
-    <div id="debug-console" class="active"></div>
+    <div id="debug-wrapper" class="active">
+        <div id="debug-controls">
+            <button class="debug-btn active" id="btn-autoscroll" onclick="toggleAutoScroll()">Auto-Scroll: ON</button>
+            <button class="debug-btn" id="btn-export" onclick="exportLogs()">📋 Copy Logs</button>
+            <button class="debug-btn" id="btn-clear" onclick="clearLogs()">🗑️ Clear</button>
+            <button class="debug-btn" id="btn-scroll-top" onclick="scrollToTop()">⬆️ Top</button>
+            <button class="debug-btn" id="btn-scroll-bottom" onclick="scrollToBottom()">⬇️ Bottom</button>
+        </div>
+        <div id="debug-console"></div>
+    </div>
 
     <script>
         // ============================================
@@ -198,8 +265,9 @@
         // ============================================
         // Debug Console
         // ============================================
-        const MAX_DEBUG_LINES = 50;
+        const MAX_DEBUG_LINES = 200; // Increased from 50 to allow more history
         const debugLines = [];
+        let autoScrollEnabled = true;
 
         function addDebugLog(message, type = 'info') {
             const timestamp = new Date().toLocaleTimeString();
@@ -217,7 +285,63 @@
                 .map(line => `<div class="log-entry ${line.type}">${line.text}</div>`)
                 .join('');
 
-            // Auto-scroll to bottom
+            // Auto-scroll to bottom if enabled
+            if (autoScrollEnabled) {
+                debugConsole.scrollTop = debugConsole.scrollHeight;
+            }
+        }
+
+        // Debug Console Control Functions
+        function toggleAutoScroll() {
+            autoScrollEnabled = !autoScrollEnabled;
+            const btn = document.getElementById('btn-autoscroll');
+            btn.textContent = `Auto-Scroll: ${autoScrollEnabled ? 'ON' : 'OFF'}`;
+            btn.classList.toggle('active', autoScrollEnabled);
+            if (autoScrollEnabled) {
+                scrollToBottom();
+            }
+        }
+
+        function exportLogs() {
+            // Create full log text with metadata
+            const logText = [
+                '='.repeat(60),
+                'CASTR RECEIVER DEBUG LOGS',
+                `Exported: ${new Date().toLocaleString()}`,
+                `Session ID: ${sessionId || 'N/A'}`,
+                `Mode: ${currentMode || 'N/A'}`,
+                '='.repeat(60),
+                '',
+                ...debugLines.map(line => line.text)
+            ].join('\n');
+
+            // Copy to clipboard
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(logText).then(() => {
+                    alert('✅ Logs copied to clipboard!\n\nYou can now paste them into an email or text file.');
+                }).catch(err => {
+                    // Fallback: show in alert for manual copy
+                    alert('Could not auto-copy. Here are your logs:\n\n' + logText);
+                });
+            } else {
+                // Fallback for browsers without clipboard API
+                alert('Logs:\n\n' + logText);
+            }
+        }
+
+        function clearLogs() {
+            if (confirm('Clear all debug logs?')) {
+                debugLines.length = 0;
+                debugConsole.innerHTML = '';
+                addDebugLog('Debug console cleared', 'info');
+            }
+        }
+
+        function scrollToTop() {
+            debugConsole.scrollTop = 0;
+        }
+
+        function scrollToBottom() {
             debugConsole.scrollTop = debugConsole.scrollHeight;
         }
 
