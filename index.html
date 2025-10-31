@@ -384,7 +384,7 @@
 
                 ws.send(JSON.stringify({
                     type: 'answer',
-                    sdp: peerConnection.localDescription
+                    sdp: peerConnection.localDescription.sdp
                 }));
 
                 console.log('Sent answer to sender');
